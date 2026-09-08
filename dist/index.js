@@ -93137,7 +93137,9 @@ OctaneClient.createPipeline = (pipelineName, ciServer, jobCiIdPrefix, jobs, para
             id: ciServer.id
         },
         root_job_ci_id: `${jobCiIdPrefix}`,
-        jobs: pipelineJobs
+        jobs: pipelineJobs,
+        // GitHub Actions workflow runs always carry a branch, so new pipelines must support branch child pipelines from creation
+        multi_branch_type: "PARENT" /* MultiBranchType.PARENT */
     })
         .fields('name', 'ci_server', 'root_job')
         .execute()).data[0];
@@ -93150,7 +93152,7 @@ OctaneClient.getPipelineOrCreate = (pipelineName, ciServer, createOnAbsence = fa
         .build();
     const pipelines = yield _a.octane
         .get('pipelines')
-        .fields('name', 'ci_server', 'root_job')
+        .fields('name', 'ci_server', 'root_job', 'multi_branch_type')
         .query(pipelineQuery)
         .execute();
     if (!pipelines ||
@@ -93163,7 +93165,16 @@ OctaneClient.getPipelineOrCreate = (pipelineName, ciServer, createOnAbsence = fa
             throw new Error(`Pipeline '${pipelineName}' not found.`);
         }
     }
-    return pipelines.data[0];
+    const pipeline = pipelines.data[0];
+    if (!pipeline.multi_branch_type) {
+        _a.LOGGER.info(`Pipeline '${pipelineName}' is missing multi_branch_type, upgrading to '${"PARENT" /* MultiBranchType.PARENT */}'...`);
+        yield _a.updatePipeline({
+            id: pipeline.id,
+            multi_branch_type: "PARENT" /* MultiBranchType.PARENT */
+        });
+        pipeline.multi_branch_type = "PARENT" /* MultiBranchType.PARENT */;
+    }
+    return pipeline;
 });
 OctaneClient.getCiServerOrCreate = (instanceId, projectName, baseUri, createOnAbsence = false) => __awaiter(void 0, void 0, void 0, function* () {
     _a.LOGGER.debug(`Getting CI server with {instanceId='${instanceId}'}...`);
@@ -93480,6 +93491,7 @@ try {
         githubToken: (0, core_1.getInput)('githubToken'),
         serverBaseUrl: (0, core_1.getInput)('serverBaseUrl'),
         pipelineNamePattern: (0, core_1.getInput)('pipelineNamePattern'),
+        preservePipelineNames: (0, core_1.getInput)('preservePipelineNames').toLowerCase() === 'true',
         testingFramework: (0, core_1.getInput)('testingFramework'),
         unitTestResultsGlobPattern: (0, core_1.getInput)('unitTestResultsGlobPattern'),
         gherkinTestResultsGlobPattern: (0, core_1.getInput)('gherkinTestResultsGlobPattern'),
@@ -93699,7 +93711,9 @@ const handlePipelineEvent = (event, repositoryOwner, repositoryName, workflowNam
             const pipelineName = (0, pipelineDataService_1.buildPipelineName)(event, repositoryOwner, repositoryName, workflowFileName, eventType != "completed" /* ActionsEventType.WORKFLOW_FINISHED */, pipelineNamePattern);
             if (isWorkflowQueued) {
                 yield (0, migrationService_1.performMigrations)(event, pipelineName, shortJobCiIdPrefix, ciServerBody, branchName);
-                yield (0, pipelineDataService_1.updatePipelineNameIfNeeded)(`${jobCiIdPrefix}*`, ciServerBody, pipelineName);
+                if (!(0, config_1.getConfig)().preservePipelineNames) {
+                    yield (0, pipelineDataService_1.updatePipelineNameIfNeeded)(`${jobCiIdPrefix}*`, ciServerBody, pipelineName);
+                }
             }
             let pipelineData = yield (0, pipelineDataService_1.getPipelineData)(pipelineName, ciServerBody, event, isWorkflowQueued, jobCiIdPrefix, jobs, configParameters);
             if (isWorkflowStarted) {
