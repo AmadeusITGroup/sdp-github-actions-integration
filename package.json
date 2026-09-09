@@ -47,7 +47,7 @@
     "@actions/github": "^5.1.1",
     "@microfocus/alm-octane-js-rest-sdk": "^24.2.1",
     "@microfocus/alm-octane-test-result-convertion": "^25.2.3",
-    "adm-zip": "^0.5.10",
+    "adm-zip": "^0.6.0",
     "fs-extra": "^11.1.0",
     "glob": "^8.1.0",
     "glob-promise": "^6.0.2",
